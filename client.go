@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -13,8 +14,25 @@ const (
 	CMDAddr = "localhost:4000"
 )
 
-func printIncoming(conn net.Conn) {
-	reader := bufio.NewReader(conn)
+type Client struct {
+	nick    string
+	conn    net.Conn
+	history []string
+}
+
+func (client *Client) showChat() {
+	fmt.Print("\033[2J")
+	var buf bytes.Buffer
+	buf.WriteString("##################################################################\n")
+	for _, msg := range client.history {
+		buf.WriteString(msg)
+	}
+	buf.WriteString("You: ")
+	fmt.Print(buf.String())
+}
+
+func (client *Client) printIncoming() {
+	reader := bufio.NewReader(client.conn)
 	for {
 		message, err := reader.ReadString('\n')
 		if err == io.EOF {
@@ -24,23 +42,24 @@ func printIncoming(conn net.Conn) {
 			fmt.Println("Could not get the message. Err:", err)
 			return
 		}
-		fmt.Print(message)
+		client.history = append(client.history, message)
+		client.showChat()
 	}
 }
 
-func sendOutgoing(conn net.Conn, reader *bufio.Reader) {
+func (client *Client) sendOutgoing(reader *bufio.Reader) {
 	for {
 		fmt.Print("You: ")
 		text, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Bye!")
-			break
+			return
 		}
 
-		_, err = fmt.Fprintf(conn, text)
+		_, err = fmt.Fprintf(client.conn, text)
 		if err != nil {
 			fmt.Println("Could not send the message. Err:", err)
-			break
+			return
 		}
 	}
 }
@@ -67,8 +86,10 @@ func main() {
 		panic("lol")
 	}
 
-	fmt.Println("Your nickname is:", nick)
+	client := Client{nick, conn, make([]string, 0, 10)}
 
-	go sendOutgoing(conn, reader)
-	printIncoming(conn)
+	fmt.Println("Your nickname is:", client.nick)
+
+	go client.sendOutgoing(reader)
+	client.printIncoming()
 }
